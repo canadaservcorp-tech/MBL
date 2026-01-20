@@ -1,0 +1,15 @@
+# Netlify configuration for LMB Maintenance App
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Redirect all routes to index.html for React Router
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Build environment
+[build.environment]
+  NODE_VERSION = "18"
