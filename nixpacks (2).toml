@@ -1,0 +1,10 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "python311", "gcc", "gnumake", "pkg-config", "sqlite"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
+
+[phases.build]
+
+[start]
+cmd = "node server.js"
