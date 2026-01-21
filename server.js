@@ -191,6 +191,28 @@ app.post('/api/users', authMiddleware, adminOnly, (req, res) => {
   }
 });
 
+// Reset user password (admin only)
+app.post('/api/users/reset-password', authMiddleware, adminOnly, (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  try {
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const stmt = db.prepare(
+      'UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?'
+    );
+    const result = stmt.run(hashedPassword, email);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ message: 'Password updated' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ APARTMENT ROUTES ============
 
 app.get('/api/apartments', authMiddleware, (req, res) => {
