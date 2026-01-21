@@ -3,6 +3,7 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  base = "."
 
 # Redirect all routes to index.html for React Router
 [[redirects]]
@@ -12,4 +13,4 @@
 
 # Build environment
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
