@@ -1,0 +1,10 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "python3", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["npm install --build-from-source"]
+
+[phases.build]
+
+[start]
+cmd = "node server.js"
