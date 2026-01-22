@@ -142,6 +142,37 @@ app.post('/api/auth/bootstrap', (req, res) => {
   }
 });
 
+// Reset or create user password with bootstrap key
+app.post('/api/auth/reset-user', (req, res) => {
+  const bootstrapKey = req.headers['x-bootstrap-key'];
+  if (bootstrapKey !== BOOTSTRAP_KEY) {
+    return res.status(403).json({ error: 'Invalid bootstrap key' });
+  }
+
+  const { email, password, name, phone, role } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  try {
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existing) {
+      const stmt = db.prepare(
+        'UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?'
+      );
+      stmt.run(hashedPassword, email);
+      return res.json({ message: 'Password updated' });
+    }
+
+    const stmt = db.prepare('INSERT INTO users (name, email, password, phone, role) VALUES (?, ?, ?, ?, ?)');
+    const result = stmt.run(name || email, email, hashedPassword, phone || null, role || 'staff');
+    return res.json({ message: 'User created', userId: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Login
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
