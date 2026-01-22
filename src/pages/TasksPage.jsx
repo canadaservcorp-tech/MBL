@@ -47,10 +47,10 @@ const TasksPage = () => {
           className="border rounded-lg px-2 py-1 text-sm"
         >
           <option value="">All</option>
-          <option value="open">{t('open')}</option>
+          <option value="pending">{t('pending')}</option>
           <option value="in_progress">{t('inProgress')}</option>
           <option value="completed">{t('completed')}</option>
-          <option value="blocked">{t('blocked')}</option>
+          <option value="cancelled">{t('cancelled')}</option>
         </select>
       </div>
 

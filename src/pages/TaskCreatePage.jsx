@@ -16,16 +16,16 @@ const TaskCreatePage = () => {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    category: '',
-    task_type: 'preventive',
-    status: 'open',
+    category_id: '',
+    task_type: 'reactive',
+    status: 'pending',
     priority: 'medium',
     due_date: '',
     assigned_to: '',
     apartment_id: '',
     area_id: '',
-    estimated_hours: '',
-    cost_amount: '',
+    hours_spent: '',
+    estimated_cost: '',
   });
 
   useEffect(() => {
@@ -65,8 +65,8 @@ const TaskCreatePage = () => {
         method: 'POST',
         body: JSON.stringify({
           ...form,
-          estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
-          cost_amount: form.cost_amount ? Number(form.cost_amount) : null,
+          hours_spent: form.hours_spent ? Number(form.hours_spent) : null,
+          estimated_cost: form.estimated_cost ? Number(form.estimated_cost) : null,
           apartment_id: form.apartment_id || null,
           area_id: form.area_id || null,
         }),
@@ -106,15 +106,15 @@ const TaskCreatePage = () => {
           <div>
             <label className="text-sm text-gray-500">{t('category')}</label>
             <select
-              name="category"
-              value={form.category}
+              name="category_id"
+              value={form.category_id}
               onChange={handleChange}
               required
               className="w-full border rounded-lg px-2 py-2"
             >
               <option value="">Select</option>
               {categories.map(cat => (
-                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
           </div>
@@ -144,7 +144,7 @@ const TaskCreatePage = () => {
               className="w-full border rounded-lg px-2 py-2"
             >
               <option value="preventive">{t('preventive')}</option>
-              <option value="corrective">{t('corrective')}</option>
+              <option value="reactive">{t('corrective')}</option>
             </select>
           </div>
           <div>
@@ -180,10 +180,10 @@ const TaskCreatePage = () => {
               onChange={handleChange}
               className="w-full border rounded-lg px-2 py-2"
             >
-              <option value="open">{t('open')}</option>
+              <option value="pending">{t('pending')}</option>
               <option value="in_progress">{t('inProgress')}</option>
               <option value="completed">{t('completed')}</option>
-              <option value="blocked">{t('blocked')}</option>
+              <option value="cancelled">{t('cancelled')}</option>
             </select>
           </div>
         </div>
@@ -222,8 +222,8 @@ const TaskCreatePage = () => {
             <label className="text-sm text-gray-500">{t('hoursSpent')}</label>
             <input
               type="number"
-              name="estimated_hours"
-              value={form.estimated_hours}
+              name="hours_spent"
+              value={form.hours_spent}
               onChange={handleChange}
               className="w-full border rounded-lg px-3 py-2"
             />
@@ -232,8 +232,8 @@ const TaskCreatePage = () => {
             <label className="text-sm text-gray-500">{t('cost')}</label>
             <input
               type="number"
-              name="cost_amount"
-              value={form.cost_amount}
+              name="estimated_cost"
+              value={form.estimated_cost}
               onChange={handleChange}
               className="w-full border rounded-lg px-3 py-2"
             />

@@ -48,6 +48,21 @@ const DashboardPage = () => {
         </div>
       )}
 
+      {overview && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { label: t('totalBuilding'), value: overview.total_cost },
+            { label: t('totalApartments'), value: overview.apartments_cost },
+            { label: t('totalCommonAreas'), value: overview.common_areas_cost },
+          ].map((item) => (
+            <div key={item.label} className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-gray-500">{item.label}</p>
+              <p className="text-2xl font-bold">${Number(item.value || 0).toFixed(2)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold mb-4">{t('tasks')}</h3>
         <div className="space-y-3">

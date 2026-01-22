@@ -17,6 +17,7 @@ const ContractorsPage = () => {
     specialties: '',
     notes: '',
   });
+  const [editingId, setEditingId] = useState(null);
   const [reviewForm, setReviewForm] = useState({ contractorId: '', rating: '5', comment: '' });
 
   const loadContractors = async () => {
@@ -43,11 +44,19 @@ const ContractorsPage = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     try {
-      await apiFetch('/api/contractors', {
-        method: 'POST',
-        body: JSON.stringify(form),
-      });
+      if (editingId) {
+        await apiFetch(`/api/contractors/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(form),
+        });
+      } else {
+        await apiFetch('/api/contractors', {
+          method: 'POST',
+          body: JSON.stringify(form),
+        });
+      }
       setForm({ name: '', company: '', email: '', phone: '', specialties: '', notes: '' });
+      setEditingId(null);
       loadContractors();
     } catch (err) {
       setError(err.message);
@@ -79,6 +88,18 @@ const ContractorsPage = () => {
     }
   };
 
+  const startEdit = (contractor) => {
+    setEditingId(contractor.id);
+    setForm({
+      name: contractor.name || '',
+      company: contractor.company || '',
+      email: contractor.email || '',
+      phone: contractor.phone || '',
+      specialties: contractor.specialty || contractor.specialties || '',
+      notes: contractor.notes || '',
+    });
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">{t('contractors')}</h2>
@@ -93,13 +114,24 @@ const ContractorsPage = () => {
                 <p className="text-xs text-gray-500">{contractor.company || ''}</p>
                 <p className="text-xs text-gray-500">{contractor.email} · {contractor.phone}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => loadReviews(contractor.id)}
-                className="text-sm text-blue-600"
-              >
-                {t('reviewContractor')}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => loadReviews(contractor.id)}
+                  className="text-sm text-blue-600"
+                >
+                  {t('reviewContractor')}
+                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(contractor)}
+                    className="text-sm text-gray-600"
+                  >
+                    {t('edit')}
+                  </button>
+                )}
+              </div>
             </div>
             {reviews[contractor.id] && (
               <div className="mt-3 space-y-2">
@@ -120,7 +152,7 @@ const ContractorsPage = () => {
       {isAdmin && (
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold mb-4">{t('addContractor')}</h3>
+            <h3 className="font-semibold mb-4">{editingId ? t('edit') : t('addContractor')}</h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input
                 name="name"

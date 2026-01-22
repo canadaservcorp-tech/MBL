@@ -11,6 +11,7 @@ const AppLayout = () => {
   const navItems = [
     { to: '/dashboard', label: t('dashboard'), icon: LayoutDashboard },
     { to: '/tasks', label: t('tasks'), icon: ClipboardList },
+    { to: '/expenses', label: t('expenses'), icon: ClipboardList },
     { to: '/assets', label: t('assets'), icon: Wrench },
     { to: '/contractors', label: t('contractors'), icon: UserSquare2 },
     { to: '/apartments', label: t('apartments'), icon: Building },

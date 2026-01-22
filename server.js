@@ -38,6 +38,36 @@ if (fs.existsSync(schemaPath)) {
   console.log('✅ Database schema initialized');
 }
 
+// Simple migrations for new columns
+const ensureColumn = (table, column, definition) => {
+  const info = db.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = info.some(col => col.name === column);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
+// Ensure optional columns exist
+try {
+  ensureColumn('tasks', 'area_id', 'INTEGER');
+  ensureColumn('tasks', 'hours_spent', 'REAL');
+  ensureColumn('areas', 'category', 'TEXT');
+  ensureColumn('assets', 'category', 'TEXT');
+  ensureColumn('assets', 'area_type', "TEXT");
+  ensureColumn('assets', 'serial_number', 'TEXT');
+  ensureColumn('assets', 'interval_days', 'INTEGER');
+  ensureColumn('assets', 'next_due_date', 'DATE');
+} catch (error) {
+  console.warn('Migration warning:', error.message);
+}
+
+// Rename Lobby -> Drop-in if present
+try {
+  db.prepare("UPDATE areas SET name = 'Drop-in' WHERE name = 'Lobby'").run();
+} catch (error) {
+  // ignore if table not available yet
+}
+
 // Email transporter (optional)
 let transporter = null;
 if (process.env.SMTP_HOST) {
@@ -159,13 +189,26 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   }
 });
 
+// Alias for frontend: /api/users/me
+app.get('/api/users/me', authMiddleware, (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, name, email, phone, role FROM users WHERE id = ?').get(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============ USER ROUTES ============
 
 // List all users (admin only)
 app.get('/api/users', authMiddleware, adminOnly, (req, res) => {
   try {
     const users = db.prepare('SELECT id, name, email, phone, role, created_at FROM users ORDER BY name').all();
-    res.json(users);
+    res.json({ users });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -218,7 +261,37 @@ app.post('/api/users/reset-password', authMiddleware, adminOnly, (req, res) => {
 app.get('/api/apartments', authMiddleware, (req, res) => {
   try {
     const apartments = db.prepare('SELECT * FROM apartments ORDER BY area_type, floor, unit_number').all();
-    res.json(apartments);
+    const mapped = apartments.map((apt) => ({
+      ...apt,
+      label: apt.unit_number,
+    }));
+    res.json({ apartments: mapped });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset apartments to standard list (admin only)
+app.post('/api/apartments/reset', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const units = [];
+    for (const floor of [2, 3, 4]) {
+      for (let num = 1; num <= 12; num += 1) {
+        const unit = `${floor}${String(num).padStart(2, '0')}`;
+        units.push([unit, floor, 'apartment', `Apartment ${unit}`]);
+      }
+    }
+
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO apartments (unit_number, floor, area_type, description)
+      VALUES (?, ?, ?, ?)
+    `);
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM apartments').run();
+      units.forEach(row => insert.run(...row));
+    });
+    tx();
+    res.json({ message: 'Apartments reset', count: units.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -229,7 +302,46 @@ app.get('/api/apartments', authMiddleware, (req, res) => {
 app.get('/api/categories', authMiddleware, (req, res) => {
   try {
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
-    res.json(categories);
+    res.json({ categories });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ AREA ROUTES ============
+app.get('/api/areas', authMiddleware, (req, res) => {
+  try {
+    const areas = db.prepare('SELECT * FROM areas ORDER BY name').all();
+    res.json({ areas });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/areas', authMiddleware, adminOnly, (req, res) => {
+  const { name, type, floor, category, notes } = req.body;
+  if (!name || !type) {
+    return res.status(400).json({ error: 'Name and type required' });
+  }
+  try {
+    const stmt = db.prepare(
+      'INSERT INTO areas (name, type, floor, category, notes) VALUES (?, ?, ?, ?, ?)'
+    );
+    const result = stmt.run(name, type, floor || null, category || null, notes || null);
+    res.json({ message: 'Area created', areaId: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/areas/:id', authMiddleware, adminOnly, (req, res) => {
+  const { name, type, floor, category, notes } = req.body;
+  try {
+    const stmt = db.prepare(
+      'UPDATE areas SET name = ?, type = ?, floor = ?, category = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    );
+    stmt.run(name, type, floor || null, category || null, notes || null, req.params.id);
+    res.json({ message: 'Area updated' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -240,14 +352,14 @@ app.get('/api/categories', authMiddleware, (req, res) => {
 app.get('/api/contractors', authMiddleware, (req, res) => {
   try {
     const contractors = db.prepare('SELECT * FROM contractors ORDER BY name').all();
-    res.json(contractors);
+    res.json({ contractors });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/contractors', authMiddleware, adminOnly, (req, res) => {
-  const { name, company, email, phone, specialty, rating, notes } = req.body;
+  const { name, company, email, phone, specialty, specialties, rating, notes } = req.body;
   if (!name || !phone) {
     return res.status(400).json({ error: 'Name and phone required' });
   }
@@ -256,7 +368,15 @@ app.post('/api/contractors', authMiddleware, adminOnly, (req, res) => {
     const stmt = db.prepare(
       'INSERT INTO contractors (name, company, email, phone, specialty, rating, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
-    const result = stmt.run(name, company || null, email || null, phone, specialty || null, rating || 0, notes || null);
+    const result = stmt.run(
+      name,
+      company || null,
+      email || null,
+      phone,
+      specialty || specialties || null,
+      rating || 0,
+      notes || null
+    );
     res.json({ message: 'Contractor created', contractorId: result.lastInsertRowid });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -264,14 +384,219 @@ app.post('/api/contractors', authMiddleware, adminOnly, (req, res) => {
 });
 
 app.put('/api/contractors/:id', authMiddleware, adminOnly, (req, res) => {
-  const { name, company, email, phone, specialty, rating, notes } = req.body;
+  const { name, company, email, phone, specialty, specialties, rating, notes } = req.body;
   
   try {
     const stmt = db.prepare(
       'UPDATE contractors SET name = ?, company = ?, email = ?, phone = ?, specialty = ?, rating = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     );
-    stmt.run(name, company, email, phone, specialty, rating, notes, req.params.id);
+    stmt.run(name, company, email, phone, specialty || specialties || null, rating, notes, req.params.id);
     res.json({ message: 'Contractor updated' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Contractor reviews
+app.get('/api/contractors/:id/reviews', authMiddleware, (req, res) => {
+  try {
+    const reviews = db.prepare(`
+      SELECT r.*, u.name as reviewer_name
+      FROM contractor_reviews r
+      LEFT JOIN users u ON r.reviewer_id = u.id
+      WHERE r.contractor_id = ?
+      ORDER BY r.created_at DESC
+    `).all(req.params.id);
+    res.json({ reviews });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/contractors/:id/reviews', authMiddleware, adminOnly, (req, res) => {
+  const { rating, comment } = req.body;
+  if (!rating) {
+    return res.status(400).json({ error: 'Rating required' });
+  }
+  try {
+    const stmt = db.prepare(
+      'INSERT INTO contractor_reviews (contractor_id, reviewer_id, rating, comment) VALUES (?, ?, ?, ?)'
+    );
+    const result = stmt.run(req.params.id, req.user.id, rating, comment || null);
+    res.json({ message: 'Review added', reviewId: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ ASSET ROUTES ============
+app.get('/api/assets', authMiddleware, (req, res) => {
+  try {
+    const assets = db.prepare(`
+      SELECT 
+        a.*,
+        c.name as contractor_name,
+        ap.unit_number as apartment_label,
+        ar.name as area_name
+      FROM assets a
+      LEFT JOIN contractors c ON a.contractor_id = c.id
+      LEFT JOIN apartments ap ON a.apartment_id = ap.id
+      LEFT JOIN areas ar ON a.area_id = ar.id
+      ORDER BY a.name
+    `).all();
+    res.json({ assets });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/assets', authMiddleware, adminOnly, (req, res) => {
+  const { name, category, area_type, area_id, apartment_id, serial_number, next_due_date, interval_days, notes } = req.body;
+  if (!name || !category || !area_type) {
+    return res.status(400).json({ error: 'Name, category, and area_type required' });
+  }
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO assets (
+        name, category, area_type, serial_number, area_id, apartment_id,
+        interval_days, next_due_date, status, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `);
+    const result = stmt.run(
+      name,
+      category,
+      area_type,
+      serial_number || null,
+      area_id || null,
+      apartment_id || null,
+      interval_days || null,
+      next_due_date || null,
+      notes || null
+    );
+    res.json({ message: 'Asset created', assetId: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/assets/:id', authMiddleware, adminOnly, (req, res) => {
+  const { name, category, area_type, serial_number, area_id, apartment_id, interval_days, next_due_date, status, notes } = req.body;
+  try {
+    const stmt = db.prepare(`
+      UPDATE assets SET
+        name = ?, category = ?, area_type = ?, serial_number = ?, area_id = ?, apartment_id = ?,
+        interval_days = ?, next_due_date = ?, status = ?, notes = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(
+      name,
+      category,
+      area_type,
+      serial_number || null,
+      area_id || null,
+      apartment_id || null,
+      interval_days || null,
+      next_due_date || null,
+      status || 'active',
+      notes || null,
+      req.params.id
+    );
+    res.json({ message: 'Asset updated' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ EXPENSE ROUTES ============
+app.get('/api/expenses', authMiddleware, (req, res) => {
+  try {
+    const expenses = db.prepare(`
+      SELECT 
+        e.*,
+        ap.unit_number as apartment_label,
+        ar.name as area_name,
+        c.name as contractor_name,
+        u.name as created_by_name
+      FROM expenses e
+      LEFT JOIN apartments ap ON e.apartment_id = ap.id
+      LEFT JOIN areas ar ON e.area_id = ar.id
+      LEFT JOIN contractors c ON e.contractor_id = c.id
+      LEFT JOIN users u ON e.created_by = u.id
+      ORDER BY e.spent_on DESC, e.created_at DESC
+    `).all();
+    res.json({ expenses });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/expenses', authMiddleware, adminOnly, (req, res) => {
+  const { apartment_id, area_id, contractor_id, amount, description, spent_on } = req.body;
+  if (!amount) {
+    return res.status(400).json({ error: 'Amount required' });
+  }
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO expenses (apartment_id, area_id, contractor_id, amount, description, spent_on, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      apartment_id || null,
+      area_id || null,
+      contractor_id || null,
+      amount,
+      description || null,
+      spent_on || null,
+      req.user.id
+    );
+    res.json({ message: 'Expense added', expenseId: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/expenses/summary', authMiddleware, (req, res) => {
+  try {
+    const total = db.prepare('SELECT SUM(amount) as total FROM expenses').get();
+    const apartmentTotal = db.prepare('SELECT SUM(amount) as total FROM expenses WHERE apartment_id IS NOT NULL').get();
+    const commonTotal = db.prepare(`
+      SELECT SUM(e.amount) as total
+      FROM expenses e
+      JOIN areas ar ON e.area_id = ar.id
+      WHERE ar.type = 'common'
+    `).get();
+    const serviceTotal = db.prepare(`
+      SELECT SUM(e.amount) as total
+      FROM expenses e
+      JOIN areas ar ON e.area_id = ar.id
+      WHERE ar.type = 'service'
+    `).get();
+
+    const byApartment = db.prepare(`
+      SELECT ap.unit_number as label, SUM(e.amount) as total
+      FROM expenses e
+      JOIN apartments ap ON e.apartment_id = ap.id
+      GROUP BY ap.unit_number
+      ORDER BY ap.unit_number
+    `).all();
+
+    const byArea = db.prepare(`
+      SELECT ar.name as name, ar.type as type, SUM(e.amount) as total
+      FROM expenses e
+      JOIN areas ar ON e.area_id = ar.id
+      GROUP BY ar.name, ar.type
+      ORDER BY ar.name
+    `).all();
+
+    res.json({
+      total_building: total.total || 0,
+      total_apartments: apartmentTotal.total || 0,
+      total_common_areas: commonTotal.total || 0,
+      total_service_areas: serviceTotal.total || 0,
+      by_apartment: byApartment,
+      by_area: byArea,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -285,19 +610,21 @@ app.get('/api/tasks', authMiddleware, (req, res) => {
       SELECT 
         t.*,
         c.name as category_name,
-        a.unit_number as apartment_unit,
-        u.name as assigned_to_name,
+        a.unit_number as apartment_label,
+        u.name as assigned_name,
         ct.name as contractor_name,
-        cr.name as created_by_name
+        cr.name as created_by_name,
+        ar.name as area_name
       FROM tasks t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN apartments a ON t.apartment_id = a.id
       LEFT JOIN users u ON t.assigned_to = u.id
       LEFT JOIN contractors ct ON t.contractor_id = ct.id
       LEFT JOIN users cr ON t.created_by = cr.id
+      LEFT JOIN areas ar ON t.area_id = ar.id
       ORDER BY t.due_date DESC, t.priority DESC
     `).all();
-    res.json(tasks);
+    res.json({ tasks });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -305,9 +632,9 @@ app.get('/api/tasks', authMiddleware, (req, res) => {
 
 app.post('/api/tasks', authMiddleware, (req, res) => {
   const {
-    title, description, category_id, apartment_id, assigned_to,
+    title, description, category_id, apartment_id, area_id, assigned_to,
     contractor_id, status, priority, task_type, due_date,
-    estimated_cost, remarks
+    estimated_cost, actual_cost, cost_amount, hours_spent, remarks
   } = req.body;
 
   if (!title) {
@@ -317,16 +644,17 @@ app.post('/api/tasks', authMiddleware, (req, res) => {
   try {
     const stmt = db.prepare(`
       INSERT INTO tasks (
-        title, description, category_id, apartment_id, assigned_to,
+        title, description, category_id, apartment_id, area_id, assigned_to,
         contractor_id, status, priority, task_type, due_date,
-        estimated_cost, remarks, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        estimated_cost, actual_cost, hours_spent, remarks, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const actual = actual_cost ?? cost_amount ?? 0;
     const result = stmt.run(
       title, description || null, category_id || null, apartment_id || null,
-      assigned_to || null, contractor_id || null, status || 'pending',
+      area_id || null, assigned_to || null, contractor_id || null, status || 'pending',
       priority || 'medium', task_type || 'reactive', due_date || null,
-      estimated_cost || 0, remarks || null, req.user.id
+      estimated_cost || 0, actual, hours_spent || 0, remarks || null, req.user.id
     );
     res.json({ message: 'Task created', taskId: result.lastInsertRowid });
   } catch (error) {
@@ -336,24 +664,25 @@ app.post('/api/tasks', authMiddleware, (req, res) => {
 
 app.put('/api/tasks/:id', authMiddleware, (req, res) => {
   const {
-    title, description, category_id, apartment_id, assigned_to,
+    title, description, category_id, apartment_id, area_id, assigned_to,
     contractor_id, status, priority, due_date, completed_date,
-    estimated_cost, actual_cost, remarks
+    estimated_cost, actual_cost, cost_amount, hours_spent, remarks
   } = req.body;
 
   try {
+    const actual = actual_cost ?? cost_amount ?? 0;
     const stmt = db.prepare(`
       UPDATE tasks SET
         title = ?, description = ?, category_id = ?, apartment_id = ?,
-        assigned_to = ?, contractor_id = ?, status = ?, priority = ?,
+        area_id = ?, assigned_to = ?, contractor_id = ?, status = ?, priority = ?,
         due_date = ?, completed_date = ?, estimated_cost = ?,
-        actual_cost = ?, remarks = ?, updated_at = CURRENT_TIMESTAMP
+        actual_cost = ?, hours_spent = ?, remarks = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     stmt.run(
-      title, description, category_id, apartment_id, assigned_to,
+      title, description, category_id, apartment_id, area_id, assigned_to,
       contractor_id, status, priority, due_date, completed_date,
-      estimated_cost, actual_cost, remarks, req.params.id
+      estimated_cost, actual, hours_spent || 0, remarks, req.params.id
     );
     res.json({ message: 'Task updated' });
   } catch (error) {
@@ -468,6 +797,36 @@ if (transporter) {
   
   console.log(`✅ Reminder cron job scheduled: ${cronSchedule}`);
 }
+
+// Overview summary
+app.get('/api/overview', authMiddleware, adminOnly, (req, res) => {
+  try {
+    const totals = db.prepare(`
+      SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as open_count,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as blocked_count
+      FROM tasks
+    `).get();
+    const cost = db.prepare('SELECT SUM(amount) as total FROM expenses').get();
+    const apartmentCost = db.prepare('SELECT SUM(amount) as total FROM expenses WHERE apartment_id IS NOT NULL').get();
+    const commonCost = db.prepare(`
+      SELECT SUM(e.amount) as total
+      FROM expenses e
+      JOIN areas ar ON e.area_id = ar.id
+      WHERE ar.type = 'common'
+    `).get();
+    res.json({
+      totals,
+      total_cost: cost.total || 0,
+      apartments_cost: apartmentCost.total || 0,
+      common_areas_cost: commonCost.total || 0,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

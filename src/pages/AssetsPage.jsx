@@ -14,10 +14,12 @@ const AssetsPage = () => {
     area_type: 'area',
     area_id: '',
     apartment_id: '',
+    serial_number: '',
     next_due_date: '',
     interval_days: '',
     notes: '',
   });
+  const [editingId, setEditingId] = useState(null);
   const [areas, setAreas] = useState([]);
   const [apartments, setApartments] = useState([]);
 
@@ -47,29 +49,54 @@ const AssetsPage = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     try {
-      await apiFetch('/api/assets', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          interval_days: form.interval_days ? Number(form.interval_days) : null,
-          area_id: form.area_id || null,
-          apartment_id: form.apartment_id || null,
-        }),
-      });
+      const payload = {
+        ...form,
+        interval_days: form.interval_days ? Number(form.interval_days) : null,
+        area_id: form.area_id || null,
+        apartment_id: form.apartment_id || null,
+      };
+      if (editingId) {
+        await apiFetch(`/api/assets/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch('/api/assets', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
       setForm({
         name: '',
         category: '',
         area_type: 'area',
         area_id: '',
         apartment_id: '',
+        serial_number: '',
         next_due_date: '',
         interval_days: '',
         notes: '',
       });
+      setEditingId(null);
       loadData();
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const startEdit = (asset) => {
+    setEditingId(asset.id);
+    setForm({
+      name: asset.name || '',
+      category: asset.category || '',
+      area_type: asset.area_type || 'area',
+      area_id: asset.area_id || '',
+      apartment_id: asset.apartment_id || '',
+      serial_number: asset.serial_number || '',
+      next_due_date: asset.next_due_date || '',
+      interval_days: asset.interval_days || '',
+      notes: asset.notes || '',
+    });
   };
 
   return (
@@ -82,9 +109,22 @@ const AssetsPage = () => {
           <div key={asset.id} className="px-6 py-4 flex justify-between items-center">
             <div>
               <p className="font-medium">{asset.name}</p>
-              <p className="text-xs text-gray-500">{asset.category} · {asset.next_due_date || '-'}</p>
+              <p className="text-xs text-gray-500">
+                {asset.category} · {asset.serial_number || t('serialNumber')} · {asset.next_due_date || '-'}
+              </p>
             </div>
-            <span className="text-xs text-gray-500">{asset.contractor_name || ''}</span>
+            <div className="text-right space-y-1">
+              <span className="block text-xs text-gray-500">{asset.contractor_name || ''}</span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => startEdit(asset)}
+                  className="text-xs text-blue-600"
+                >
+                  {t('edit')}
+                </button>
+              )}
+            </div>
           </div>
         ))}
         {assets.length === 0 && (
@@ -94,7 +134,7 @@ const AssetsPage = () => {
 
       {isAdmin && (
         <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
-          <h3 className="font-semibold mb-4">{t('addAsset')}</h3>
+          <h3 className="font-semibold mb-4">{editingId ? t('edit') : t('addAsset')}</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
               name="name"
@@ -110,6 +150,13 @@ const AssetsPage = () => {
               onChange={handleChange}
               placeholder={t('category')}
               required
+              className="w-full border rounded-lg px-3 py-2"
+            />
+            <input
+              name="serial_number"
+              value={form.serial_number}
+              onChange={handleChange}
+              placeholder={t('serialNumber')}
               className="w-full border rounded-lg px-3 py-2"
             />
             <div className="grid md:grid-cols-2 gap-4">

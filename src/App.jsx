@@ -14,6 +14,7 @@ import ContractorsPage from './pages/ContractorsPage';
 import ApartmentsPage from './pages/ApartmentsPage';
 import AreasPage from './pages/AreasPage';
 import UsersPage from './pages/UsersPage';
+import ExpensesPage from './pages/ExpensesPage';
 
 const App = () => (
   <BrowserRouter>
@@ -28,6 +29,7 @@ const App = () => (
               <Route path="tasks" element={<TasksPage />} />
               <Route path="tasks/new" element={<TaskCreatePage />} />
               <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+              <Route path="expenses" element={<ExpensesPage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="contractors" element={<ContractorsPage />} />
               <Route path="apartments" element={<ApartmentsPage />} />

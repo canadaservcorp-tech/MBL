@@ -45,6 +45,18 @@ const ApartmentsPage = () => {
     }
   };
 
+  const resetApartments = async () => {
+    if (!window.confirm(t('confirmReset'))) {
+      return;
+    }
+    try {
+      await apiFetch('/api/apartments/reset', { method: 'POST' });
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const grouped = apartments.reduce((acc, apt) => {
     acc[apt.floor] = acc[apt.floor] || [];
     acc[apt.floor].push(apt);
@@ -53,7 +65,18 @@ const ApartmentsPage = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">{t('apartments')}</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">{t('apartments')}</h2>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={resetApartments}
+            className="px-3 py-2 text-sm border rounded-lg"
+          >
+            {t('resetApartments')}
+          </button>
+        )}
+      </div>
       {error && <div className="text-red-600">{error}</div>}
 
       {Object.keys(grouped).map(floor => (

@@ -21,7 +21,7 @@ const TaskDetailPage = () => {
       setForm({
         status: data.task.status,
         hours_spent: data.task.hours_spent || '',
-        cost_amount: data.task.cost_amount || '',
+        cost_amount: data.task.actual_cost || '',
       });
       const remarksData = await apiFetch(`/api/tasks/${taskId}/remarks`);
       setRemarks(remarksData.remarks || []);
@@ -41,7 +41,7 @@ const TaskDetailPage = () => {
         body: JSON.stringify({
           status: form.status,
           hours_spent: form.hours_spent ? Number(form.hours_spent) : null,
-          cost_amount: form.cost_amount ? Number(form.cost_amount) : null,
+          actual_cost: form.cost_amount ? Number(form.cost_amount) : null,
         }),
       });
       await loadTask();
@@ -94,10 +94,10 @@ const TaskDetailPage = () => {
               onChange={(event) => setForm(prev => ({ ...prev, status: event.target.value }))}
               className="mt-1 w-full border rounded-lg px-2 py-1"
             >
-              <option value="open">{t('open')}</option>
+              <option value="pending">{t('pending')}</option>
               <option value="in_progress">{t('inProgress')}</option>
               <option value="completed">{t('completed')}</option>
-              <option value="blocked">{t('blocked')}</option>
+              <option value="cancelled">{t('cancelled')}</option>
             </select>
           </div>
           <div>
