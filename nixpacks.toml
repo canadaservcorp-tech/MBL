@@ -1,8 +1,15 @@
 [phases.setup]
-nixPkgs = ["nodejs_18"]
+nixPkgs = [
+  "nodejs_20",
+  "stdenv.cc.cc.lib",
+  "python3",
+  "gnumake",
+  "gcc",
+  "pkg-config"
+]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm ci --build-from-source"]
 
 [phases.build]
 
